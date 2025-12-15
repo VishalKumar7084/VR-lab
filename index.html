@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>VR Newton's Rings Lab</title>
+    <!-- Load A-Frame (The WebVR Framework) -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    
+    <script>
+      // --- THE PHYSICS & LOGIC COMPONENT ---
+      AFRAME.registerComponent('microscope-logic', {
+        schema: {
+          wavelength: {type: 'number', default: 589}, // nm (Sodium)
+          radius: {type: 'number', default: 100} // cm
+        },
+
+        init: function () {
+          // State
+          this.position = 0; // Micrometer position in mm
+          this.stepSize = 0.01; // Step speed
+
+          // Get references to 3D UI elements
+          this.readingText = document.querySelector('#reading-text');
+          this.monitorPlane = document.querySelector('#microscope-screen');
+          
+          // Create a 2D Canvas to generate the ring texture dynamically
+          this.canvas = document.createElement('canvas');
+          this.canvas.width = 512;
+          this.canvas.height = 512;
+          this.ctx = this.canvas.getContext('2d');
+
+          // Assign canvas as texture to the 3D Monitor
+          // We need to wait for the mesh to load, or just set it on the material
+          const mesh = this.monitorPlane.getObject3D('mesh');
+          this.texture = new THREE.CanvasTexture(this.canvas);
+          this.monitorPlane.setAttribute('material', 'src', this.canvas);
+
+          // Bind Button Events
+          document.querySelector('#btn-left').addEventListener('click', () => this.move(-1));
+          document.querySelector('#btn-right').addEventListener('click', () => this.move(1));
+          
+          // Initial Draw
+          this.drawRings();
+        },
+
+        move: function (direction) {
+          // Update position
+          this.position += (direction * this.stepSize);
+          
+          // Clamp/Limit range (-5mm to 5mm)
+          if(this.position > 5) this.position = 5;
+          if(this.position < -5) this.position = -5;
+
+          // Update the 3D Text Reading
+          // Add dummy offset 10mm so reading looks realistic (e.g. 10.05 mm)
+          let displayVal = (10 + this.position).toFixed(3);
+          this.readingText.setAttribute('value', `Reading: ${displayVal} mm`);
+
+          // Redraw graphics
+          this.drawRings();
+        },
+
+        drawRings: function () {
+          const w = this.canvas.width;
+          const h = this.canvas.height;
+          const ctx = this.ctx;
+          
+          // 1. Background (Dark)
+          ctx.fillStyle = '#111';
+          ctx.fillRect(0, 0, w, h);
+
+          // 2. Physics Constants
+          const lambda = this.data.wavelength * 1e-6; // convert nm to mm
+          const R = this.data.radius * 10; // convert cm to mm
+          const pxPerMm = 60; // Zoom level
+
+          // 3. Calculate Center Offset based on micrometer position
+          // If we move micrometer Right, image moves Left
+          const centerX = (w / 2) - (this.position * pxPerMm);
+          const centerY = h / 2;
+
+          // 4. Draw Rings
+          ctx.strokeStyle = '#FFD700'; // Sodium Color
+          ctx.lineWidth = 2;
+
+          // Draw first 30 rings
+          for (let n = 1; n < 35; n++) {
+             // Radius r = sqrt(n * lambda * R)
+             let r_mm = Math.sqrt(n * lambda * R);
+             let r_px = r_mm * pxPerMm;
+
+             ctx.beginPath();
+             ctx.arc(centerX, centerY, r_px, 0, 2 * Math.PI);
+             ctx.stroke();
+          }
+
+          // Center Spot (Dark)
+          ctx.fillStyle = '#000';
+          ctx.beginPath();
+          ctx.arc(centerX, centerY, 4, 0, 2 * Math.PI);
+          ctx.fill();
+
+          // 5. Draw Crosshair (Fixed to the Viewport/Eyepiece)
+          // The crosshair does NOT move with the rings
+          ctx.strokeStyle = '#00FF00'; // Green Crosshair
+          ctx.lineWidth = 1;
+          
+          // Vertical line
+          ctx.beginPath();
+          ctx.moveTo(w/2, 0);
+          ctx.lineTo(w/2, h);
+          ctx.stroke();
+
+          // Horizontal line
+          ctx.beginPath();
+          ctx.moveTo(0, h/2);
+          ctx.lineTo(w, h/2);
+          ctx.stroke();
+
+          // 6. UPDATE TEXTURE for Three.js
+          // Crucial step: tell A-Frame/Three.js the canvas changed
+          const material = this.monitorPlane.getObject3D('mesh').material;
+          if(material.map) material.map.needsUpdate = true;
+        }
+      });
+    </script>
+  </head>
+  <body>
+    
+    <a-scene background="color: #222" microscope-logic cursor="rayOrigin: mouse">
+      
+      <!-- ASSETS -->
+      <a-assets>
+        <img id="metal" src="https://cdn.aframe.io/a-painter/images/floor.jpg"> <!-- Placeholder texture -->
+      </a-assets>
+
+      <!-- LIGHTING -->
+      <a-entity light="type: ambient; color: #BBB"></a-entity>
+      <a-entity light="type: directional; color: #FFF; intensity: 0.6" position="-0.5 1 1"></a-entity>
+
+      <!-- CAMERA RIG (User Position) -->
+      <a-entity position="0 1.6 2">
+        <a-camera look-controls wasd-controls>
+            <!-- VR Controller / Gaze Cursor -->
+            <a-cursor color="yellow" fuse="false"></a-cursor>
+        </a-camera>
+      </a-entity>
+
+      <!-- LAB TABLE -->
+      <a-box position="0 0.8 0" width="4" height="0.1" depth="2" color="#333"></a-box>
+      
+      <!-- MICROSCOPE APPARATUS GROUP -->
+      <a-entity position="0 0.85 0">
+        
+        <!-- Base -->
+        <a-cylinder position="0 0.05 0" radius="0.4" height="0.1" color="#555"></a-cylinder>
+        
+        <!-- Microscope Body -->
+        <a-cylinder position="0 0.5 0" radius="0.05" height="1" color="silver"></a-cylinder>
+        <a-box position="0 1 0" width="0.2" height="0.2" depth="0.5" color="#222"></a-box>
+        
+        <!-- Lens Setup (Subject) -->
+        <a-sphere position="0 0.1 0" radius="0.2" scale="1 0.2 1" color="#88CCFF" opacity="0.6"></a-sphere>
+        <a-box position="0 0.01 0" width="0.5" height="0.01" depth="0.5" color="#88CCFF" opacity="0.5"></a-box>
+
+      </a-entity>
+
+      <!-- VIRTUAL MONITOR (The Eyepiece View) -->
+      <!-- This plane displays the canvas generated in JS -->
+      <a-entity position="0 1.5 -0.5" rotation="10 0 0">
+        
+        <!-- Monitor Frame -->
+        <a-box position="0 0 -0.05" width="1.1" height="1.1" depth="0.05" color="#444"></a-box>
+        
+        <!-- The Screen Surface -->
+        <a-plane id="microscope-screen" width="1" height="1" position="0 0 0" shader="flat"></a-plane>
+        
+        <!-- Label -->
+        <a-text value="Microscope View" position="0 0.6 0" align="center" width="3"></a-text>
+      </a-entity>
+
+
+      <!-- CONTROL PANEL -->
+      <a-entity position="0 1 0.5" rotation="-20 0 0">
+        <a-box width="1.2" height="0.4" depth="0.1" color="#222"></a-box>
+        
+        <!-- Measurement Display -->
+        <a-text id="reading-text" value="Reading: 10.000 mm" position="0 0.08 0.06" align="center" color="#00FF00" width="4"></a-text>
+
+        <!-- Left Button -->
+        <a-cylinder id="btn-left" position="-0.3 -0.05 0.06" rotation="90 0 0" radius="0.08" height="0.05" color="#AA3333"
+                    animation__click="property: scale; from: 1 1 1; to: 1 0.5 1; dur: 150; startEvents: click; dir: alternate">
+          <a-text value="<" position="0 0.03 0" rotation="-90 0 0" align="center" scale="2 2 2"></a-text>
+        </a-cylinder>
+
+        <!-- Right Button -->
+        <a-cylinder id="btn-right" position="0.3 -0.05 0.06" rotation="90 0 0" radius="0.08" height="0.05" color="#33AA33"
+                    animation__click="property: scale; from: 1 1 1; to: 1 0.5 1; dur: 150; startEvents: click; dir: alternate">
+            <a-text value=">" position="0 0.03 0" rotation="-90 0 0" align="center" scale="2 2 2"></a-text>
+        </a-cylinder>
+
+        <a-text value="Move Microscope" position="0 -0.15 0.06" align="center" width="2" color="#AAA"></a-text>
+      </a-entity>
+
+    </a-scene>
+  </body>
+</html>
