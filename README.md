@@ -4,9 +4,7 @@
 <b>Discipline | <b>Information Technology
 :--|:--|
 <b> Lab | <b> VIRTUAL LAB
-<b> Experiment|     <b>  Allow users to move 
-the microscope to measure the 
-diameters of the rings.
+<b> Experiment|     <b> Allow user to move the microscope to meaasure the diameter of the rings.
 
 ### About the Experiment 
 
